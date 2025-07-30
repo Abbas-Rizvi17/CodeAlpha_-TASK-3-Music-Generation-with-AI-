@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Object Detection & Tracking</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        header {
+            width: 100%;
+            background-color: #1e1e1e;
+            padding: 20px 0;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 2.2rem;
+            background: linear-gradient(90deg, #00c6ff, #0072ff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        .subtitle {
+            margin-top: 8px;
+            font-size: 1rem;
+            color: #aaaaaa;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 90%;
+            max-width: 1200px;
+            margin: 30px auto;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        #video {
+            width: 100%;
+            display: block;
+            background-color: #000;
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #0072ff, #00c6ff);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 800px;
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .stat-item {
+            text-align: center;
+            margin: 5px 10px;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #00c6ff;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #aaaaaa;
+        }
+        
+        .detection-list {
+            width: 100%;
+            max-width: 800px;
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .detection-list h3 {
+            margin-top: 0;
+            color: #00c6ff;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        
+        .detection-items {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .detection-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+        }
+        
+        .detection-item:last-child {
+            border-bottom: none;
+        }
+        
+        .detection-name {
+            font-weight: bold;
+        }
+        
+        .detection-confidence {
+            color: #00c6ff;
+        }
+        
+        footer {
+            margin-top: auto;
+            width: 100%;
+            background-color: #1e1e1e;
+            padding: 15px 0;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #777;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            button {
+                width: 100%;
+                max-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Real-Time Object Detection & Tracking</h1>
+        <div class="subtitle">Using TensorFlow.js COCO-SSD model with custom tracking</div>
+    </header>
+    
+    <div class="container">
+        <div class="video-container">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">Start Detection</button>
+            <button id="stopBtn" disabled>Stop Detection</button>
+            <button id="toggleTrackingBtn">Enable Tracking</button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-value" id="fps">0</div>
+                <div class="stat-label">FPS</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="detectionTime">0</div>
+                <div class="stat-label">Detection Time (ms)</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="objectsCount">0</div>
+                <div class="stat-label">Objects Detected</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="trackedCount">0</div>
+                <div class="stat-label">Objects Tracked</div>
+            </div>
+        </div>
+        
+        <div class="detection-list">
+            <h3>Detected Objects</h3>
+            <div class="detection-items" id="detectionList"></div>
+        </div>
+    </div>
+    
+    <footer>
+        AI Object Detection & Tracking System | TensorFlow.js COCO-SSD Model | Custom SORT Implementation
+    </footer>
+    
+    <script>
+        // DOM elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const toggleTrackingBtn = document.getElementById('toggleTrackingBtn');
+        const fpsElement = document.getElementById('fps');
+        const detectionTimeElement = document.getElementById('detectionTime');
+        const objectsCountElement = document.getElementById('objectsCount');
+        const trackedCountElement = document.getElementById('trackedCount');
+        const detectionList = document.getElementById('detectionList');
+        
+        // App state
+        let model = null;
+        let isDetecting = false;
+        let isTrackingEnabled = false;
+        let lastTimestamp = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let trackedObjects = [];
+        let nextTrackId = 1;
+        
+        // Colors for different classes
+        const classColors = {
+            'person': '#FF5252',
+            'car': '#4CAF50',
+            'bicycle': '#FF9800',
+            'motorcycle': '#9C27B0',
+            'bus': '#2196F3',
+            'truck': '#607D8B',
+            'dog': '#795548',
+            'cat': '#9E9E9E',
+            'bird': '#CDDC39',
+            'default': '#00BCD4'
+        };
+        
+        // Initialize the application
+        async function init() {
+            try {
+                // Load the COCO-SSD model
+                console.log('Loading COCO-SSD model...');
+                model = await cocoSsd.load();
+                console.log('Model loaded successfully');
+                
+                // Set up camera
+                await setupCamera();
+                
+                // Set canvas dimensions to match video
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                // Event listeners
+                startBtn.addEventListener('click', startDetection);
+                stopBtn.addEventListener('click', stopDetection);
+                toggleTrackingBtn.addEventListener('click', toggleTracking);
+                
+                console.log('Application initialized');
+            } catch (error) {
+                console.error('Initialization error:', error);
+                alert('Failed to initialize the application. See console for details.');
+            }
+        }
+        
+        // Set up camera
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'environment'
+                    },
+                    audio: false
+                });
+                video.srcObject = stream;
+                
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+            } catch (error) {
+                console.error('Camera setup error:', error);
+                alert('Could not access the camera. Please ensure you have granted camera permissions.');
+                throw error;
+            }
+        }
+        
+        // Start object detection
+        function startDetection() {
+            if (isDetecting) return;
+            
+            isDetecting = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            
+            // Clear previous detections
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            detectionList.innerHTML = '';
+            trackedObjects = [];
+            nextTrackId = 1;
+            
+            // Start detection loop
+            detectObjects();
+            
+            console.log('Object detection started');
+        }
+        
+        // Stop object detection
+        function stopDetection() {
+            isDetecting = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            console.log('Object detection stopped');
+        }
+        
+        // Toggle object tracking
+        function toggleTracking() {
+            isTrackingEnabled = !isTrackingEnabled;
+            toggleTrackingBtn.textContent = isTrackingEnabled ? 'Disable Tracking' : 'Enable Tracking';
+            
+            if (!isTrackingEnabled) {
+                // Clear tracked objects when disabling tracking
+                trackedObjects = [];
+                nextTrackId = 1;
+                trackedCountElement.textContent = '0';
+            }
+            
+            console.log(`Tracking ${isTrackingEnabled ? 'enabled' : 'disabled'}`);
+        }
+        
+        // Main detection loop
+        async function detectObjects() {
+            if (!isDetecting) return;
+            
+            const startTime = performance.now();
+            
+            try {
+                // Perform detection
+                const predictions = await model.detect(video);
+                
+                // Calculate detection time
+                const detectionTime = performance.now() - startTime;
+                detectionTimeElement.textContent = detectionTime.toFixed(1);
+                
+                // Update FPS counter
+                updateFPS();
+                
+                // Clear previous drawings
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Process detections
+                processDetections(predictions);
+                
+                // Update UI
+                objectsCountElement.textContent = predictions.length;
+                updateDetectionList(predictions);
+                
+                // Continue detection loop
+                requestAnimationFrame(detectObjects);
+            } catch (error) {
+                console.error('Detection error:', error);
+                stopDetection();
+            }
+        }
+        
+        // Process detections and apply tracking if enabled
+        function processDetections(predictions) {
+            if (isTrackingEnabled) {
+                // Apply SORT (Simple Online and Realtime Tracking) algorithm
+                trackedObjects = sortTracking(trackedObjects, predictions);
+                trackedCountElement.textContent = trackedObjects.length;
+                
+                // Draw tracked objects with IDs
+                trackedObjects.forEach(obj => {
+                    drawDetection(obj, true);
+                });
+            } else {
+                // Draw detections without tracking
+                predictions.forEach(pred => {
+                    drawDetection(pred, false);
+                });
+            }
+        }
+        
+        // Simple Online and Realtime Tracking (SORT) implementation
+        function sortTracking(currentTracks, newDetections) {
+            const updatedTracks = [];
+            const unmatchedDetections = [...newDetections];
+            
+            // Try to match existing tracks with new detections
+            currentTracks.forEach(track => {
+                let bestMatch = null;
+                let bestIoU = 0.3; // Minimum IoU threshold
+                
+                // Find the detection with highest IoU
+                for (let i = 0; i < unmatchedDetections.length; i++) {
+                    const detection = unmatchedDetections[i];
+                    const iou = calculateIoU(track, detection);
+                    
+                    if (iou > bestIoU) {
+                        bestIoU = iou;
+                        bestMatch = i;
+                    }
+                }
+                
+                if (bestMatch !== null) {
+                    // Update the track with matched detection
+                    const matchedDetection = unmatchedDetections[bestMatch];
+                    const updatedTrack = {
+                        ...matchedDetection,
+                        id: track.id,
+                        age: track.age + 1,
+                        active: true
+                    };
+                    updatedTracks.push(updatedTrack);
+                    unmatchedDetections.splice(bestMatch, 1);
+                } else if (track.age < 3) {
+                    // Keep the track for a few frames even without detection
+                    updatedTracks.push({
+                        ...track,
+                        active: false,
+                        age: track.age + 1
+                    });
+                }
+            });
+            
+            // Create new tracks for unmatched detections
+            unmatchedDetections.forEach(detection => {
+                updatedTracks.push({
+                    ...detection,
+                    id: nextTrackId++,
+                    age: 0,
+                    active: true
+                });
+            });
+            
+            return updatedTracks.filter(track => track.age < 5); // Remove old tracks
+        }
+        
+        // Calculate Intersection over Union (IoU) between two bounding boxes
+        function calculateIoU(box1, box2) {
+            const x1 = Math.max(box1.bbox[0], box2.bbox[0]);
+            const y1 = Math.max(box1.bbox[1], box2.bbox[1]);
+            const x2 = Math.min(box1.bbox[0] + box1.bbox[2], box2.bbox[0] + box2.bbox[2]);
+            const y2 = Math.min(box1.bbox[1] + box1.bbox[3], box2.bbox[1] + box2.bbox[3]);
+            
+            const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+            const area1 = box1.bbox[2] * box1.bbox[3];
+            const area2 = box2.bbox[2] * box2.bbox[3];
+            const union = area1 + area2 - intersection;
+            
+            return intersection / union;
+        }
+        
+        // Draw detection on canvas
+        function drawDetection(detection, isTracked) {
+            const [x, y, width, height] = detection.bbox;
+            const className = detection.class;
+            const score = detection.score;
+            const color = classColors[className] || classColors['default'];
+            
+            // Draw bounding box
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+            
+            // Draw background for label
+            ctx.fillStyle = color;
+            const text = `${className} ${(score * 100).toFixed(1)}%`;
+            const textWidth = ctx.measureText(text).width;
+            ctx.fillRect(x, y, textWidth + 10, 20);
+            
+            // Draw label text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px Arial';
+            ctx.fillText(text, x + 5, y + 15);
+            
+            // Draw tracking ID if tracked
+            if (isTracked) {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y + height - 20, 30, 20);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(`ID: ${detection.id}`, x + 5, y + height - 5);
+            }
+        }
+        
+        // Update FPS counter
+        function updateFPS() {
+            frameCount++;
+            
+            const now = performance.now();
+            if (lastTimestamp && now - lastTimestamp >= 1000) {
+                fps = Math.round((frameCount * 1000) / (now - lastTimestamp));
+                fpsElement.textContent = fps;
+                frameCount = 0;
+                lastTimestamp = now;
+            } else if (!lastTimestamp) {
+                lastTimestamp = now;
+            }
+        }
+        
+        // Update detection list in UI
+        function updateDetectionList(predictions) {
+            // Clear previous list
+            detectionList.innerHTML = '';
+            
+            // Group predictions by class and display them
+            const groupedPredictions = predictions.reduce((acc, pred) => {
+                if (!acc[pred.class]) {
+                    acc[pred.class] = [];
+                }
+                acc[pred.class].push(pred);
+                return acc;
+            }, {});
+
+            for (const [className, preds] of Object.entries(groupedPredictions)) {
+                preds.forEach(pred => {
+                    const item = document.createElement('div');
+                    item.className = 'detection-item';
+                    item.innerHTML = `<span class="detection-name">${className}</span> <span class="detection-confidence">${(pred.score * 100).toFixed(1)}%</span>`;
+                    detectionList.appendChild(item);
+                });
+            }
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
